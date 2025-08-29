@@ -1,7 +1,7 @@
 import { asyncHundler } from "../../utils/response.js";
 import * as serviceDB from "../../DB/service.db.js"
 import { UserModel } from "../../DB/models/user.model.js";
-import { deleteFolder, deleteResources, destroyFile, uploadFile, uploadFiles } from "../../utils/multer/cloudinary.js";
+import { deleteFolder, uploadFiles } from "../../utils/multer/cloudinary.js";
 import { MessageModel } from "../../DB/models/Message.model.js";
 
 
@@ -21,59 +21,96 @@ export const sendMessage = asyncHundler(
             }
         })
         if (!user) {
-            return next(new Error("In-valid Receiver Account" , {cause: 404}))
+            return next(new Error("In-valid Receiver Account", { cause: 404 }))
         }
 
-        const {content} = req.body;
+        const { content } = req.body;
         let attachments = [];
-
-        if (req.files) {
-            attachments = await uploadFiles({files : req.files , path : `messages/${receiverId}`})
-        }
 
         const [message] = await MessageModel.create([{
             content,
-            attachments,
+            attachments : [],
             receiverId,
-            senderId : req.user?._id
+            senderId: req.user?._id
         }])
 
-        return res.status(201).json({ message: "message success" , message});
-    }
-)
-
-export const profileImage = asyncHundler(
-    async (req, res, next) => {
-
-        const { secure_url, public_id } = await uploadFile({ file: req.file, path: `user/${req.user._id}` })
-
-        const user = await serviceDB.findOneAndUpdate({
-            model: UserModel,
-            filter: { _id: req.user._id, },
-            data: { picture: { secure_url, public_id } },
-            options: { new: false }
-        })
-        if (user?.picture?.public_id) {
-            await destroyFile({ public_id: user.picture.public_id })
+        if (req.files) {
+            attachments = await uploadFiles({ files: req.files, path: `messages/${receiverId}/${message._id}` })
+            message.attachments = attachments;
+            await message.save();
         }
-        return res.status(201).json({ message: "Upload Image success", data: user });
+
+        return res.status(201).json({ message: "message success", message });
     }
 )
 
-export const coverImage = asyncHundler(
+export const getMessageById = asyncHundler(
     async (req, res, next) => {
+        const { messageId } = req.params;
 
-        const attachments = await uploadFiles({ files: req.files, path: `user/${req.user._id}/cover` })
-        const user = await serviceDB.findOneAndUpdate({
-            model: UserModel,
-            filter: { _id: req.user._id, },
-            data: { coverImages: attachments },
-            options: { new: false }
-        })
+        const message = await serviceDB.findOne({
+            model: MessageModel,
+            filter: {
+                _id: messageId,
+                deletedAt: { $exists: false }
+            }
+        });
 
-        if (user?.coverImages?.length) {
-            await deleteResources({ public_ids: user.coverImages.map(ele => ele.public_id) })
+        if (!message) {
+            return next(new Error("Message not found", { cause: 404 }));
         }
-        return res.status(201).json({ message: "Upload Image success", user });
+
+        if (message.receiverId.toString() !== req.user._id.toString()) {
+            return next(new Error("Not authorized to view this message", { cause: 403 }));
+        }
+
+        return res.status(200).json({ message });
     }
-)
+);
+
+
+export const softDeleteMessage = asyncHundler(
+    async (req, res, next) => {
+        const { messageId } = req.params;
+
+        const message = await serviceDB.findOneAndUpdate({
+            model: MessageModel,
+            filter: {
+                _id: messageId,
+                receiverId: req.user._id,
+                deletedAt: { $exists: false }
+            },
+            data: {
+                deletedAt: Date.now(),
+                deletedBy: req.user._id
+            }
+        });
+
+        return message
+            ? res.status(200).json({ message: "Message deleted successfully", data: message })
+            : next(new Error("Invalid Message or Not Authorized", { cause: 404 }));
+    }
+);
+
+export const hardDeleteMessage = asyncHundler(
+    async (req, res, next) => {
+        const { messageId } = req.params;
+
+        const message = await serviceDB.deleteOne({
+            model: MessageModel,
+            filter: {
+                _id: messageId,
+                receiverId: req.user._id,
+                deletedAt: { $exists: true }
+            }
+        });
+
+        if (message.deletedCount) {
+            await deleteFolder({ prefix: `messages/${req.user._id}/${messageId}` });
+        }
+
+        return message.deletedCount
+            ? res.status(200).json({ message: "Message deleted (hard) successfully" })
+            : next(new Error("Invalid Message or Not Authorized", { cause: 404 }));
+    }
+);

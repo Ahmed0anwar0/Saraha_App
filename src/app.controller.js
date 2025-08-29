@@ -1,8 +1,8 @@
 import path from "node:path";
 import * as dotenv from "dotenv";
-// dotenv.config({ path: path.join("./src/config/.env") })
+dotenv.config({ path: path.join("./src/config/.env") })
 dotenv.config({ })
-
+ 
 
 import express from 'express';
 import connectDB from './DB/connection.db.js';

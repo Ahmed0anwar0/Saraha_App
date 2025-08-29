@@ -19,5 +19,22 @@ router.post('/:receiverId/sender',
     validation(validators.sendMessage),
     messageService.sendMessage);
 
+router.get('/:messageId',
+    auth(),
+    validation(validators.getMessageById),
+    messageService.getMessageById);
+ 
+
+router.delete('/:messageId',
+    auth(),
+    validation(validators.getMessageById),
+    messageService.softDeleteMessage);
+ 
+
+router.delete('/:messageId/hard',
+    auth(),
+    validation(validators.getMessageById),
+    messageService.hardDeleteMessage);
+ 
 
 export default router

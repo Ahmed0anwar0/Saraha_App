@@ -13,6 +13,8 @@ const messageSchema = new mongoose.Schema({
     attachments: [{ secure_url : String, public_id : String }],
     receiverId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     senderId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    deletedAt: Date,
+    deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
 }, {
     timestamps: true,
 })
